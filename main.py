@@ -1,6 +1,10 @@
 import os
 import logging
+import threading
+import tempfile
 from dotenv import load_dotenv
+from fastapi import FastAPI
+import uvicorn
 from telegram import Update
 from telegram.ext import (
     Application, CommandHandler, MessageHandler,
@@ -13,13 +17,23 @@ from handlers.news_handler import get_news
 from handlers.scraper_handler import scrape_website
 from handlers.translation_handler import translate_text
 from handlers.document_handler import process_pdf, process_excel
-import tempfile
 
 load_dotenv()
 logging.basicConfig(level=os.getenv("LOG_LEVEL", "INFO"))
 logger = logging.getLogger(__name__)
 
 BOT_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN")
+
+# FastAPI health check
+web_app = FastAPI()
+
+@web_app.get("/")
+def health_check():
+    return {"status": "Bot is running!"}
+
+def run_web():
+    port = int(os.getenv("PORT", 8000))
+    uvicorn.run(web_app, host="0.0.0.0", port=port)
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text(
@@ -89,6 +103,12 @@ async def handle_document(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 def main():
     init_db()
+
+    # Web server background এ চালাও
+    web_thread = threading.Thread(target=run_web, daemon=True)
+    web_thread.start()
+    logger.info("Web server চালু হয়েছে!")
+
     app = Application.builder().token(BOT_TOKEN).build()
     app.add_handler(CommandHandler("start", start))
     app.add_handler(CommandHandler("ai", ai_command))
